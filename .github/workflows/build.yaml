@@ -1,0 +1,41 @@
+name: Build
+on: workflow_dispatch
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup cache
+        uses: actions/cache@v3
+        with:
+          path: cache
+          key: compile-${{ github.ref }}-${{ github.sha }}
+          restore-keys: |
+            compile-${{ github.ref }}-
+            compile-
+      - name: Checkout everest-core
+        uses: actions/checkout@v3
+        with:
+          path: source
+      - name: Setup run scripts
+        run: |
+          mkdir scripts
+          rsync -a source/.ci/build-kit/ scripts
+      - name: Pull docker container
+        run: |
+          docker pull --quiet ghcr.io/everest/build-kit-alpine:latest
+          docker image tag ghcr.io/everest/build-kit-alpine:latest build-kit
+      - name: Compile
+        run: |
+          docker run \
+          --volume "$(pwd):/ext" \
+          --name compile-container \
+          build-kit run-script compile
+          docker cp compile-container:/workspace/gcc_warnings.txt gcc_warnings.txt
+      - name: 'Upload GCC warnings'
+        uses: actions/upload-artifact@v3
+        with:
+          name: gcc-warnings
+          path: gcc_warnings.txt
+          retention-days: 5
